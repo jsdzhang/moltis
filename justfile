@@ -174,5 +174,12 @@ snap:
 flatpak:
     cd flatpak && flatpak-builder --repo=repo --force-clean builddir org.moltbot.Moltis.yml
 
+# Run all CI checks (format, lint, build, test)
+ci: format-check lint build test
+
+# Run all tests
+test:
+    cargo test --all-features
+
 # Build all Linux packages (deb + rpm + arch + appimage) for all architectures
 packages-all: deb-all rpm-all arch-pkg-all
