@@ -16,7 +16,7 @@ use {
         runner::{RunnerEvent, run_agent_loop},
         tool_registry::ToolRegistry,
     },
-    moltis_sessions::{metadata::SessionMetadata, store::SessionStore},
+    moltis_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
 };
 
 use crate::{
@@ -65,7 +65,7 @@ pub struct LiveChatService {
     active_runs: Arc<RwLock<HashMap<String, AbortHandle>>>,
     tool_registry: Arc<ToolRegistry>,
     session_store: Arc<SessionStore>,
-    session_metadata: Arc<RwLock<SessionMetadata>>,
+    session_metadata: Arc<SqliteSessionMetadata>,
 }
 
 impl LiveChatService {
@@ -73,7 +73,7 @@ impl LiveChatService {
         providers: Arc<RwLock<ProviderRegistry>>,
         state: Arc<GatewayState>,
         session_store: Arc<SessionStore>,
-        session_metadata: Arc<RwLock<SessionMetadata>>,
+        session_metadata: Arc<SqliteSessionMetadata>,
     ) -> Self {
         Self {
             providers,
@@ -161,12 +161,14 @@ impl ChatService for LiveChatService {
                 None
             };
             // Also check session metadata for project binding.
-            let project_id = project_id.or_else(|| {
-                // If the session itself is bound to a project, use that.
-                let meta = self.session_metadata.try_read().ok()?;
-                let entry = meta.get(&session_key)?;
-                entry.project_id.clone()
-            });
+            let project_id = if project_id.is_some() {
+                project_id
+            } else {
+                self.session_metadata
+                    .get(&session_key)
+                    .await
+                    .and_then(|e| e.project_id)
+            };
             if let Some(pid) = project_id {
                 match self
                     .state
@@ -229,12 +231,10 @@ impl ChatService for LiveChatService {
         }
 
         // Update metadata.
-        {
-            let mut meta = self.session_metadata.write().await;
-            meta.upsert(&session_key, None);
-            meta.touch(&session_key, history.len() as u32);
-            let _ = meta.save();
-        }
+        self.session_metadata.upsert(&session_key, None).await;
+        self.session_metadata
+            .touch(&session_key, history.len() as u32)
+            .await;
 
         let run_id = uuid::Uuid::new_v4().to_string();
         let state = Arc::clone(&self.state);
@@ -306,9 +306,7 @@ impl ChatService for LiveChatService {
                 }
                 // Update metadata counts.
                 if let Ok(count) = session_store.count(&session_key_clone).await {
-                    let mut meta = session_metadata.write().await;
-                    meta.touch(&session_key_clone, count);
-                    let _ = meta.save();
+                    session_metadata.touch(&session_key_clone, count).await;
                 }
             }
 

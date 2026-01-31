@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
-use tokio::process::Command;
-use tracing::{debug, warn};
+use {
+    anyhow::{Context, Result, bail},
+    tokio::process::Command,
+    tracing::{debug, warn},
+};
 
 const WORKTREE_DIR: &str = ".moltis-worktrees";
 

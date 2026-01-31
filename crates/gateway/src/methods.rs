@@ -537,14 +537,11 @@ impl MethodRegistry {
                     let (tx, rx) = tokio::sync::oneshot::channel();
                     {
                         let mut invokes = ctx.state.pending_invokes.write().await;
-                        invokes.insert(
-                            invoke_id.clone(),
-                            crate::state::PendingInvoke {
-                                request_id: ctx.request_id.clone(),
-                                sender: tx,
-                                created_at: std::time::Instant::now(),
-                            },
-                        );
+                        invokes.insert(invoke_id.clone(), crate::state::PendingInvoke {
+                            request_id: ctx.request_id.clone(),
+                            sender: tx,
+                            created_at: std::time::Instant::now(),
+                        });
                     }
 
                     // Wait for result with 30s timeout.
