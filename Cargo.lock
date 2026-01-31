@@ -1889,6 +1889,7 @@ dependencies = [
  "moltis-media",
  "moltis-oauth",
  "moltis-plugins",
+ "moltis-projects",
  "moltis-protocol",
  "moltis-routing",
  "moltis-sessions",
@@ -1977,6 +1978,21 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "moltis-projects"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

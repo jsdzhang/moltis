@@ -152,6 +152,56 @@ impl ChatService for LiveChatService {
             self.session_key_for(conn_id.as_deref()).await
         };
 
+        // Resolve project context for this connection's active project.
+        let project_context = {
+            let project_id = if let Some(cid) = conn_id.as_deref() {
+                let projects = self.state.active_projects.read().await;
+                projects.get(cid).cloned()
+            } else {
+                None
+            };
+            // Also check session metadata for project binding.
+            let project_id = project_id.or_else(|| {
+                // If the session itself is bound to a project, use that.
+                let meta = self.session_metadata.try_read().ok()?;
+                let entry = meta.get(&session_key)?;
+                entry.project_id.clone()
+            });
+            if let Some(pid) = project_id {
+                match self.state.services.project.get(serde_json::json!({"id": pid})).await {
+                    Ok(val) => {
+                        if let Some(dir) = val.get("directory").and_then(|v| v.as_str()) {
+                            match moltis_projects::context::load_context_files(std::path::Path::new(dir)) {
+                                Ok(files) => {
+                                    let project: Option<moltis_projects::Project> =
+                                        serde_json::from_value(val.clone()).ok();
+                                    if let Some(p) = project {
+                                        let ctx = moltis_projects::ProjectContext {
+                                            project: p,
+                                            context_files: files,
+                                            worktree_dir: None,
+                                        };
+                                        Some(ctx.to_prompt_section())
+                                    } else {
+                                        None
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("failed to load project context: {e}");
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    Err(_) => None,
+                }
+            } else {
+                None
+            }
+        };
+
         // Persist the user message.
         let user_msg = serde_json::json!({"role": "user", "content": &text});
         if let Err(e) = self.session_store.append(&session_key, &user_msg).await {
@@ -208,6 +258,7 @@ impl ChatService for LiveChatService {
         let session_metadata = Arc::clone(&self.session_metadata);
         let session_key_clone = session_key.clone();
         let handle = tokio::spawn(async move {
+            let ctx_ref = project_context.as_deref();
             let assistant_text = if stream_only {
                 run_streaming(
                     &state,
@@ -217,6 +268,7 @@ impl ChatService for LiveChatService {
                     &provider_name,
                     &history,
                     &session_key_clone,
+                    ctx_ref,
                 )
                 .await
             } else {
@@ -229,6 +281,7 @@ impl ChatService for LiveChatService {
                     &provider_name,
                     &history,
                     &session_key_clone,
+                    ctx_ref,
                 )
                 .await
             };
@@ -304,9 +357,10 @@ async fn run_with_tools(
     provider_name: &str,
     history: &[serde_json::Value],
     session_key: &str,
+    project_context: Option<&str>,
 ) -> Option<String> {
     let native_tools = provider.supports_tools();
-    let system_prompt = build_system_prompt(tool_registry, native_tools);
+    let system_prompt = build_system_prompt(tool_registry, native_tools, project_context);
 
     // Broadcast tool events to the UI as they happen.
     let state_for_events = Arc::clone(state);
@@ -467,8 +521,17 @@ async fn run_streaming(
     provider_name: &str,
     history: &[serde_json::Value],
     session_key: &str,
+    project_context: Option<&str>,
 ) -> Option<String> {
-    let mut messages: Vec<serde_json::Value> = history.to_vec();
+    let mut messages: Vec<serde_json::Value> = Vec::new();
+    // Prepend project context as a system message if available.
+    if let Some(ctx) = project_context {
+        messages.push(serde_json::json!({
+            "role": "system",
+            "content": ctx,
+        }));
+    }
+    messages.extend_from_slice(history);
     messages.push(serde_json::json!({
         "role": "user",
         "content": text,

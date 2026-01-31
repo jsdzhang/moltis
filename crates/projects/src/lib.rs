@@ -1,0 +1,17 @@
+//! Project management for moltis.
+//!
+//! A project represents a codebase directory. When a session is bound to a
+//! project, moltis loads `CLAUDE.md` and `AGENTS.md` context files from the
+//! directory hierarchy and can create git worktrees for session isolation.
+
+pub mod complete;
+pub mod context;
+pub mod detect;
+pub mod store;
+pub mod types;
+pub mod worktree;
+
+pub use {
+    store::{ProjectStore, TomlProjectStore},
+    types::{ContextFile, Project, ProjectContext},
+};

@@ -541,6 +541,52 @@ impl ProviderSetupService for NoopProviderSetupService {
     }
 }
 
+// ── Project ─────────────────────────────────────────────────────────────────
+
+#[async_trait]
+pub trait ProjectService: Send + Sync {
+    async fn list(&self) -> ServiceResult;
+    async fn get(&self, params: Value) -> ServiceResult;
+    async fn upsert(&self, params: Value) -> ServiceResult;
+    async fn delete(&self, params: Value) -> ServiceResult;
+    async fn detect(&self, params: Value) -> ServiceResult;
+    async fn complete_path(&self, params: Value) -> ServiceResult;
+    async fn context(&self, params: Value) -> ServiceResult;
+}
+
+pub struct NoopProjectService;
+
+#[async_trait]
+impl ProjectService for NoopProjectService {
+    async fn list(&self) -> ServiceResult {
+        Ok(serde_json::json!([]))
+    }
+
+    async fn get(&self, _p: Value) -> ServiceResult {
+        Ok(serde_json::json!(null))
+    }
+
+    async fn upsert(&self, _p: Value) -> ServiceResult {
+        Err("project service not configured".into())
+    }
+
+    async fn delete(&self, _p: Value) -> ServiceResult {
+        Err("project service not configured".into())
+    }
+
+    async fn detect(&self, _p: Value) -> ServiceResult {
+        Ok(serde_json::json!([]))
+    }
+
+    async fn complete_path(&self, _p: Value) -> ServiceResult {
+        Ok(serde_json::json!([]))
+    }
+
+    async fn context(&self, _p: Value) -> ServiceResult {
+        Ok(serde_json::json!(null))
+    }
+}
+
 // ── Bundled services ────────────────────────────────────────────────────────
 
 /// All domain services the gateway delegates to.
@@ -563,6 +609,7 @@ pub struct GatewayServices {
     pub voicewake: Arc<dyn VoicewakeService>,
     pub logs: Arc<dyn LogsService>,
     pub provider_setup: Arc<dyn ProviderSetupService>,
+    pub project: Arc<dyn ProjectService>,
 }
 
 impl GatewayServices {
@@ -607,6 +654,12 @@ impl GatewayServices {
             voicewake: Arc::new(NoopVoicewakeService),
             logs: Arc::new(NoopLogsService),
             provider_setup: Arc::new(NoopProviderSetupService),
+            project: Arc::new(NoopProjectService),
         }
+    }
+
+    pub fn with_project(mut self, project: Arc<dyn ProjectService>) -> Self {
+        self.project = project;
+        self
     }
 }

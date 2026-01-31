@@ -50,6 +50,7 @@
     </div>
     <div class="flex-1 flex flex-col py-1">
       <a href="/" data-nav class="nav-link active">Chat</a>
+      <a href="/projects" data-nav class="nav-link">Projects</a>
       <a href="/crons" data-nav class="nav-link">Crons</a>
       <a href="/methods" data-nav class="nav-link">Methods</a>
     </div>
@@ -60,6 +61,13 @@
     <div class="px-3 py-2.5 border-b border-[var(--border)] flex items-center justify-between">
       <span class="text-sm text-[var(--muted)] font-medium">Sessions</span>
       <button id="newSessionBtn" class="text-xs text-[var(--muted)] border border-[var(--border)] px-2 py-0.5 rounded hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer bg-transparent">+ New</button>
+    </div>
+    <!-- Project selector -->
+    <div class="px-3 py-2 border-b border-[var(--border)] flex items-center gap-2">
+      <select id="projectSelect" class="flex-1 text-xs bg-[var(--surface2)] border border-[var(--border)] rounded px-2 py-1.5 text-[var(--text)] focus:outline-none focus:border-[var(--border-strong)] cursor-pointer" style="font-family:var(--font-body)">
+        <option value="">No project</option>
+      </select>
+      <button id="manageProjectsBtn" class="text-xs text-[var(--muted)] border border-[var(--border)] px-2 py-0.5 rounded hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer bg-transparent" title="Manage projects">+</button>
     </div>
     <div class="px-3 py-2 border-b border-[var(--border)]" style="position:relative">
       <input id="sessionSearch" type="text" placeholder="Search sessions…"
@@ -82,6 +90,19 @@
     </div>
     <div class="provider-modal-body" id="providerModalBody">
       <!-- Populated by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- Project modal -->
+<div id="projectModal" class="provider-modal-backdrop hidden">
+  <div class="provider-modal">
+    <div class="provider-modal-header">
+      <span class="text-sm font-medium text-[var(--text-strong)]" id="projectModalTitle">Manage Projects</span>
+      <button id="projectModalClose" class="text-[var(--muted)] hover:text-[var(--text)] cursor-pointer bg-transparent border-none text-lg leading-none">&times;</button>
+    </div>
+    <div class="provider-modal-body" id="projectModalBody">
+      <!-- Project list populated by JS -->
     </div>
   </div>
 </div>

@@ -19,6 +19,7 @@ pub mod cron;
 pub mod methods;
 pub mod nodes;
 pub mod pairing;
+pub mod project;
 pub mod provider_setup;
 pub mod server;
 pub mod services;

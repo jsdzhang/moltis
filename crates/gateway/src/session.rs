@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use serde_json::Value;
-use tokio::sync::RwLock;
+use {async_trait::async_trait, serde_json::Value, tokio::sync::RwLock};
 
 use moltis_sessions::{metadata::SessionMetadata, store::SessionStore};
 
@@ -46,10 +44,7 @@ impl SessionService for LiveSessionService {
             .get("key")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'key' parameter".to_string())?;
-        let limit = params
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5) as usize;
+        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
 
         let messages = self
             .store
@@ -82,6 +77,8 @@ impl SessionService for LiveSessionService {
                 "createdAt": entry.created_at,
                 "updatedAt": entry.updated_at,
                 "messageCount": entry.message_count,
+                "projectId": entry.project_id,
+                "archived": entry.archived,
             },
             "history": history,
         }))
@@ -92,13 +89,25 @@ impl SessionService for LiveSessionService {
             .get("key")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'key' parameter".to_string())?;
-        let label = params.get("label").and_then(|v| v.as_str()).map(String::from);
+        let label = params
+            .get("label")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         let mut meta = self.metadata.write().await;
         if meta.get(key).is_none() {
             return Err(format!("session '{key}' not found"));
         }
         meta.upsert(key, label);
+        // Update project_id if provided (explicit null clears it).
+        if params.get("project_id").is_some() {
+            let project_id = params
+                .get("project_id")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(String::from);
+            meta.set_project_id(key, project_id);
+        }
         meta.save().map_err(|e| e.to_string())?;
 
         let entry = meta.get(key).unwrap();
@@ -159,10 +168,7 @@ impl SessionService for LiveSessionService {
             return Ok(serde_json::json!([]));
         }
 
-        let max = params
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(20) as usize;
+        let max = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
 
         let results = self
             .store
@@ -174,9 +180,7 @@ impl SessionService for LiveSessionService {
         let enriched: Vec<Value> = results
             .into_iter()
             .map(|r| {
-                let label = meta
-                    .get(&r.session_key)
-                    .and_then(|e| e.label.clone());
+                let label = meta.get(&r.session_key).and_then(|e| e.label.clone());
                 serde_json::json!({
                     "sessionKey": r.session_key,
                     "snippet": r.snippet,

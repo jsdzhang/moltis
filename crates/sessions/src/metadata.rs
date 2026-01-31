@@ -5,8 +5,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use {
+    anyhow::Result,
+    serde::{Deserialize, Serialize},
+};
 
 /// A single session entry in the metadata index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,6 +19,12 @@ pub struct SessionEntry {
     pub created_at: u64,
     pub updated_at: u64,
     pub message_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_branch: Option<String>,
 }
 
 /// JSON file-backed index mapping session key → SessionEntry.
@@ -77,6 +85,9 @@ impl SessionMetadata {
                 created_at: now,
                 updated_at: now,
                 message_count: 0,
+                project_id: None,
+                archived: false,
+                worktree_branch: None,
             })
     }
 
@@ -84,6 +95,14 @@ impl SessionMetadata {
     pub fn touch(&mut self, key: &str, message_count: u32) {
         if let Some(entry) = self.entries.get_mut(key) {
             entry.message_count = message_count;
+            entry.updated_at = now_ms();
+        }
+    }
+
+    /// Set the project_id for a session.
+    pub fn set_project_id(&mut self, key: &str, project_id: Option<String>) {
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.project_id = project_id;
             entry.updated_at = now_ms();
         }
     }

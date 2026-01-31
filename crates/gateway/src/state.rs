@@ -154,6 +154,8 @@ pub struct GatewayState {
     pub chat_override: RwLock<Option<Arc<dyn crate::services::ChatService>>>,
     /// Active session key per connection (conn_id → session key).
     pub active_sessions: RwLock<HashMap<String, String>>,
+    /// Active project id per connection (conn_id → project id).
+    pub active_projects: RwLock<HashMap<String, String>>,
 }
 
 impl GatewayState {
@@ -181,6 +183,7 @@ impl GatewayState {
             approval_manager,
             chat_override: RwLock::new(None),
             active_sessions: RwLock::new(HashMap::new()),
+            active_projects: RwLock::new(HashMap::new()),
         })
     }
 

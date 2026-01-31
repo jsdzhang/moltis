@@ -58,10 +58,7 @@ pub async fn poll_for_token(
             .form(&[
                 ("client_id", config.client_id.as_str()),
                 ("device_code", device_code),
-                (
-                    "grant_type",
-                    "urn:ietf:params:oauth:grant-type:device_code",
-                ),
+                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ])
             .send()
             .await?;
@@ -81,7 +78,7 @@ pub async fn poll_for_token(
             Some("slow_down") => {
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
-            }
+            },
             Some(err) => anyhow::bail!("device flow error: {err}"),
             None => anyhow::bail!("unexpected response from token endpoint"),
         }
@@ -261,9 +258,7 @@ mod tests {
     async fn poll_for_token_access_denied_error() {
         let app = Router::new().route(
             "/token",
-            post(|| async {
-                axum::Json(serde_json::json!({"error": "access_denied"}))
-            }),
+            post(|| async { axum::Json(serde_json::json!({"error": "access_denied"})) }),
         );
         let base = start_mock(app).await;
         let config = test_config(String::new(), format!("{base}/token"));

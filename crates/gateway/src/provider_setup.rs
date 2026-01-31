@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use {async_trait::async_trait, serde_json::Value, tokio::sync::RwLock, tracing::info};
 
@@ -75,7 +71,10 @@ impl KeyStore {
 
 /// Merge persisted API keys into a ProvidersConfig so the registry rebuild
 /// picks them up without needing env vars.
-pub(crate) fn config_with_saved_keys(base: &ProvidersConfig, key_store: &KeyStore) -> ProvidersConfig {
+pub(crate) fn config_with_saved_keys(
+    base: &ProvidersConfig,
+    key_store: &KeyStore,
+) -> ProvidersConfig {
     let mut config = base.clone();
     for (name, key) in key_store.load_all() {
         let entry = config
@@ -272,14 +271,14 @@ impl LiveProviderSetupService {
                         provider = %provider_name,
                         "device-flow OAuth complete, rebuilt provider registry"
                     );
-                }
+                },
                 Err(e) => {
                     tracing::error!(
                         provider = %provider_name,
                         error = %e,
                         "device-flow OAuth polling failed"
                     );
-                }
+                },
             }
         });
 
@@ -365,7 +364,9 @@ impl ProviderSetupService for LiveProviderSetupService {
             .ok_or_else(|| format!("no OAuth config for provider: {provider_name}"))?;
 
         if oauth_config.device_flow {
-            return self.oauth_start_device_flow(provider_name, oauth_config).await;
+            return self
+                .oauth_start_device_flow(provider_name, oauth_config)
+                .await;
         }
 
         let port = callback_port(&oauth_config);
@@ -527,13 +528,10 @@ mod tests {
         store.save("anthropic", "sk-saved").unwrap();
 
         let mut base = ProvidersConfig::default();
-        base.providers.insert(
-            "anthropic".into(),
-            ProviderEntry {
-                api_key: Some("sk-config".into()),
-                ..Default::default()
-            },
-        );
+        base.providers.insert("anthropic".into(), ProviderEntry {
+            api_key: Some("sk-config".into()),
+            ..Default::default()
+        });
         let merged = config_with_saved_keys(&base, &store);
         let entry = merged.get("anthropic").unwrap();
         // Config key takes precedence over saved key.
@@ -658,11 +656,7 @@ mod tests {
                 .iter()
                 .find(|p| p.name == name)
                 .unwrap_or_else(|| panic!("missing provider: {name}"));
-            assert_eq!(
-                provider.env_key,
-                Some(env_key),
-                "wrong env_key for {name}"
-            );
+            assert_eq!(provider.env_key, Some(env_key), "wrong env_key for {name}");
             assert_eq!(provider.auth_type, "api-key");
         }
     }
@@ -675,8 +669,15 @@ mod tests {
         let _svc = LiveProviderSetupService::new(registry, ProvidersConfig::default());
 
         // All new API-key providers should be accepted by save_key
-        for name in ["mistral", "openrouter", "cerebras", "minimax", "moonshot", "venice", "ollama"]
-        {
+        for name in [
+            "mistral",
+            "openrouter",
+            "cerebras",
+            "minimax",
+            "moonshot",
+            "venice",
+            "ollama",
+        ] {
             // We can't actually persist in tests (would write to real disk),
             // but we can verify the provider name is recognized.
             let known = KNOWN_PROVIDERS

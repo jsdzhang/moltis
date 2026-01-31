@@ -128,6 +128,13 @@ pub async fn start_gateway(bind: &str, port: u16) -> anyhow::Result<()> {
         Arc::clone(&session_metadata),
     ));
 
+    // Wire live project service.
+    let projects_path = directories::ProjectDirs::from("", "", "moltis")
+        .map(|d| d.config_dir().join("projects.toml"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".moltis/projects.toml"));
+    let project_store = moltis_projects::TomlProjectStore::new(projects_path);
+    services.project = Arc::new(crate::project::LiveProjectService::new(project_store));
+
     // Initialize cron service with file-backed store.
     let cron_store: Arc<dyn moltis_cron::store::CronStore> =
         match moltis_cron::store_file::FileStore::default_path() {

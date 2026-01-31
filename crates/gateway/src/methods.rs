@@ -50,6 +50,10 @@ const READ_METHODS: &[&str] = &[
     "sessions.list",
     "sessions.preview",
     "sessions.search",
+    "projects.list",
+    "projects.get",
+    "projects.context",
+    "projects.complete_path",
     "cron.list",
     "cron.status",
     "cron.runs",
@@ -80,6 +84,9 @@ const WRITE_METHODS: &[&str] = &[
     "providers.save_key",
     "providers.oauth.start",
     "sessions.switch",
+    "projects.upsert",
+    "projects.delete",
+    "projects.detect",
 ];
 
 const APPROVAL_METHODS: &[&str] = &["exec.approval.request", "exec.approval.resolve"];
@@ -1359,17 +1366,46 @@ impl MethodRegistry {
                         .await
                         .insert(ctx.client_conn_id.clone(), key.to_string());
 
-                    // Auto-create session in metadata if it doesn't exist.
-                    // Then resolve the session entry + history.
-                    ctx.state
+                    // Store the active project for this connection, if provided.
+                    if let Some(project_id) = ctx.params.get("project_id").and_then(|v| v.as_str())
+                    {
+                        if project_id.is_empty() {
+                            ctx.state
+                                .active_projects
+                                .write()
+                                .await
+                                .remove(&ctx.client_conn_id);
+                        } else {
+                            ctx.state
+                                .active_projects
+                                .write()
+                                .await
+                                .insert(ctx.client_conn_id.clone(), project_id.to_string());
+                        }
+                    }
+
+                    // Resolve first (auto-creates session if needed), then
+                    // persist project_id so the entry exists when we patch.
+                    let result = ctx
+                        .state
                         .services
                         .session
                         .resolve(serde_json::json!({ "key": key }))
                         .await
                         .map_err(|_| {
-                            // Session doesn't exist yet — create it then resolve.
                             ErrorShape::new(error_codes::UNAVAILABLE, "session resolve failed")
-                        })
+                        })?;
+
+                    if let Some(pid) = ctx.params.get("project_id").and_then(|v| v.as_str()) {
+                        let _ = ctx
+                            .state
+                            .services
+                            .session
+                            .patch(serde_json::json!({ "key": key, "project_id": pid }))
+                            .await;
+                    }
+
+                    Ok(result)
                 })
             }),
         );
@@ -1845,6 +1881,100 @@ impl MethodRegistry {
                         .services
                         .web_login
                         .wait(ctx.params.clone())
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+
+        // ── Projects ────────────────────────────────────────────────────
+
+        self.register(
+            "projects.list",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .project
+                        .list()
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+        self.register(
+            "projects.get",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .project
+                        .get(ctx.params.clone())
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+        self.register(
+            "projects.upsert",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .project
+                        .upsert(ctx.params.clone())
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+        self.register(
+            "projects.delete",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .project
+                        .delete(ctx.params.clone())
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+        self.register(
+            "projects.detect",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .project
+                        .detect(ctx.params.clone())
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+        self.register(
+            "projects.complete_path",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .project
+                        .complete_path(ctx.params.clone())
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+        self.register(
+            "projects.context",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .project
+                        .context(ctx.params.clone())
                         .await
                         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
                 })

@@ -4,9 +4,11 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::Result;
-use fd_lock::RwLock;
-use serde::{Deserialize, Serialize};
+use {
+    anyhow::Result,
+    fd_lock::RwLock,
+    serde::{Deserialize, Serialize},
+};
 
 /// A single search hit within a session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +35,8 @@ impl SessionStore {
     }
 
     fn path_for(&self, key: &str) -> PathBuf {
-        self.base_dir.join(format!("{}.jsonl", Self::key_to_filename(key)))
+        self.base_dir
+            .join(format!("{}.jsonl", Self::key_to_filename(key)))
     }
 
     /// Append a message (JSON value) as a single line to the session file.
@@ -45,12 +48,11 @@ impl SessionStore {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            let file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)?;
+            let file = OpenOptions::new().create(true).append(true).open(&path)?;
             let mut lock = RwLock::new(file);
-            let mut guard = lock.try_write().map_err(|e| anyhow::anyhow!("lock failed: {e}"))?;
+            let mut guard = lock
+                .try_write()
+                .map_err(|e| anyhow::anyhow!("lock failed: {e}"))?;
             writeln!(*guard, "{line}")?;
             Ok(())
         })
@@ -80,7 +82,7 @@ impl SessionStore {
                     Ok(val) => messages.push(val),
                     Err(e) => {
                         tracing::warn!("skipping malformed JSONL line: {e}");
-                    }
+                    },
                 }
             }
             Ok(messages)
@@ -139,8 +141,7 @@ impl SessionStore {
             .filter_map(|e| e.ok())
             .filter_map(|e| {
                 let name = e.file_name().to_string_lossy().to_string();
-                name.strip_suffix(".jsonl")
-                    .map(|s| s.replace('_', ":"))
+                name.strip_suffix(".jsonl").map(|s| s.replace('_', ":"))
             })
             .collect()
     }
@@ -173,7 +174,9 @@ impl SessionStore {
                 };
                 let reader = BufReader::new(file);
                 for (idx, line) in reader.lines().enumerate() {
-                    let Ok(line) = line else { continue };
+                    let Ok(line) = line else {
+                        continue;
+                    };
                     let trimmed = line.trim();
                     if trimmed.is_empty() {
                         continue;
@@ -181,10 +184,7 @@ impl SessionStore {
                     let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) else {
                         continue;
                     };
-                    let content = val
-                        .get("content")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
+                    let content = val.get("content").and_then(|v| v.as_str()).unwrap_or("");
                     if content.to_lowercase().contains(&query) {
                         let role = val
                             .get("role")
@@ -239,8 +239,7 @@ impl SessionStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::json;
+    use {super::*, serde_json::json};
 
     fn temp_store() -> (SessionStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
@@ -252,8 +251,14 @@ mod tests {
     async fn test_append_and_read() {
         let (store, _dir) = temp_store();
 
-        store.append("main", &json!({"role": "user", "content": "hello"})).await.unwrap();
-        store.append("main", &json!({"role": "assistant", "content": "hi"})).await.unwrap();
+        store
+            .append("main", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant", "content": "hi"}))
+            .await
+            .unwrap();
 
         let msgs = store.read("main").await.unwrap();
         assert_eq!(msgs.len(), 2);
@@ -286,7 +291,10 @@ mod tests {
     async fn test_clear() {
         let (store, _dir) = temp_store();
 
-        store.append("main", &json!({"role": "user", "content": "hello"})).await.unwrap();
+        store
+            .append("main", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
         assert_eq!(store.read("main").await.unwrap().len(), 1);
 
         store.clear("main").await.unwrap();
@@ -298,8 +306,14 @@ mod tests {
         let (store, _dir) = temp_store();
 
         assert_eq!(store.count("main").await.unwrap(), 0);
-        store.append("main", &json!({"role": "user"})).await.unwrap();
-        store.append("main", &json!({"role": "assistant"})).await.unwrap();
+        store
+            .append("main", &json!({"role": "user"}))
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant"}))
+            .await
+            .unwrap();
         assert_eq!(store.count("main").await.unwrap(), 2);
     }
 
@@ -307,9 +321,18 @@ mod tests {
     async fn test_search_matching() {
         let (store, _dir) = temp_store();
 
-        store.append("s1", &json!({"role": "user", "content": "hello world"})).await.unwrap();
-        store.append("s1", &json!({"role": "assistant", "content": "hi there"})).await.unwrap();
-        store.append("s2", &json!({"role": "user", "content": "goodbye world"})).await.unwrap();
+        store
+            .append("s1", &json!({"role": "user", "content": "hello world"}))
+            .await
+            .unwrap();
+        store
+            .append("s1", &json!({"role": "assistant", "content": "hi there"}))
+            .await
+            .unwrap();
+        store
+            .append("s2", &json!({"role": "user", "content": "goodbye world"}))
+            .await
+            .unwrap();
 
         let results = store.search("hello", 10).await.unwrap();
         assert_eq!(results.len(), 1);
@@ -322,7 +345,10 @@ mod tests {
     async fn test_search_case_insensitive() {
         let (store, _dir) = temp_store();
 
-        store.append("s1", &json!({"role": "user", "content": "Hello World"})).await.unwrap();
+        store
+            .append("s1", &json!({"role": "user", "content": "Hello World"}))
+            .await
+            .unwrap();
 
         let results = store.search("hello world", 10).await.unwrap();
         assert_eq!(results.len(), 1);
@@ -333,7 +359,10 @@ mod tests {
     async fn test_search_no_match() {
         let (store, _dir) = temp_store();
 
-        store.append("s1", &json!({"role": "user", "content": "hello"})).await.unwrap();
+        store
+            .append("s1", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
 
         let results = store.search("xyz", 10).await.unwrap();
         assert!(results.is_empty());
@@ -343,7 +372,10 @@ mod tests {
     async fn test_search_empty_query() {
         let (store, _dir) = temp_store();
 
-        store.append("s1", &json!({"role": "user", "content": "hello"})).await.unwrap();
+        store
+            .append("s1", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
 
         // Empty query should match nothing (caller should guard against this)
         let results = store.search("", 10).await.unwrap();
@@ -356,9 +388,21 @@ mod tests {
     async fn test_search_across_sessions() {
         let (store, _dir) = temp_store();
 
-        store.append("s1", &json!({"role": "user", "content": "rust is great"})).await.unwrap();
-        store.append("s2", &json!({"role": "assistant", "content": "rust is awesome"})).await.unwrap();
-        store.append("s3", &json!({"role": "user", "content": "python is nice"})).await.unwrap();
+        store
+            .append("s1", &json!({"role": "user", "content": "rust is great"}))
+            .await
+            .unwrap();
+        store
+            .append(
+                "s2",
+                &json!({"role": "assistant", "content": "rust is awesome"}),
+            )
+            .await
+            .unwrap();
+        store
+            .append("s3", &json!({"role": "user", "content": "python is nice"}))
+            .await
+            .unwrap();
 
         let results = store.search("rust", 10).await.unwrap();
         assert_eq!(results.len(), 2);
@@ -373,7 +417,10 @@ mod tests {
 
         for i in 0..10 {
             let key = format!("s{i}");
-            store.append(&key, &json!({"role": "user", "content": "common term"})).await.unwrap();
+            store
+                .append(&key, &json!({"role": "user", "content": "common term"}))
+                .await
+                .unwrap();
         }
 
         let results = store.search("common", 3).await.unwrap();
@@ -384,7 +431,10 @@ mod tests {
     async fn test_key_sanitization() {
         let (store, _dir) = temp_store();
 
-        store.append("session:abc-123", &json!({"role": "user"})).await.unwrap();
+        store
+            .append("session:abc-123", &json!({"role": "user"}))
+            .await
+            .unwrap();
         let msgs = store.read("session:abc-123").await.unwrap();
         assert_eq!(msgs.len(), 1);
     }

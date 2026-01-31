@@ -15,6 +15,7 @@ members = [
   "crates/oauth",
   "crates/onboarding",
   "crates/plugins",
+  "crates/projects",
   "crates/protocol",
   "crates/routing",
   "crates/sessions",
@@ -85,6 +86,7 @@ moltis-memory     = { path = "crates/memory" }
 moltis-oauth      = { path = "crates/oauth" }
 moltis-onboarding = { path = "crates/onboarding" }
 moltis-plugins    = { path = "crates/plugins" }
+moltis-projects   = { path = "crates/projects" }
 moltis-protocol   = { path = "crates/protocol" }
 moltis-routing    = { path = "crates/routing" }
 moltis-sessions   = { path = "crates/sessions" }

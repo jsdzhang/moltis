@@ -108,10 +108,7 @@ impl GitHubCopilotProvider {
                 .form(&[
                     ("client_id", GITHUB_CLIENT_ID),
                     ("device_code", device_code),
-                    (
-                        "grant_type",
-                        "urn:ietf:params:oauth:grant-type:device_code",
-                    ),
+                    ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
                 ])
                 .send()
                 .await?;
@@ -127,7 +124,7 @@ impl GitHubCopilotProvider {
                 Some("slow_down") => {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     continue;
-                }
+                },
                 Some(err) => anyhow::bail!("GitHub device flow error: {err}"),
                 None => anyhow::bail!("unexpected response from GitHub token endpoint"),
             }
@@ -136,14 +133,9 @@ impl GitHubCopilotProvider {
 
     /// Get a valid Copilot API token, exchanging the GitHub token if needed.
     async fn get_valid_copilot_token(&self) -> anyhow::Result<String> {
-        let tokens = self
-            .token_store
-            .load(PROVIDER_NAME)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "not logged in to github-copilot — run OAuth device flow first"
-                )
-            })?;
+        let tokens = self.token_store.load(PROVIDER_NAME).ok_or_else(|| {
+            anyhow::anyhow!("not logged in to github-copilot — run OAuth device flow first")
+        })?;
 
         // The `access_token` stored is the GitHub user token.
         // We need to exchange it for a Copilot API token each time
@@ -182,14 +174,11 @@ impl GitHubCopilotProvider {
         let copilot_resp: CopilotTokenResponse = resp.json().await?;
 
         // Cache the Copilot API token
-        let _ = self.token_store.save(
-            "github-copilot-api",
-            &OAuthTokens {
-                access_token: copilot_resp.token.clone(),
-                refresh_token: None,
-                expires_at: Some(copilot_resp.expires_at),
-            },
-        );
+        let _ = self.token_store.save("github-copilot-api", &OAuthTokens {
+            access_token: copilot_resp.token.clone(),
+            refresh_token: None,
+            expires_at: Some(copilot_resp.expires_at),
+        });
 
         Ok(copilot_resp.token)
     }
@@ -242,8 +231,7 @@ fn parse_tool_calls(message: &serde_json::Value) -> Vec<ToolCall> {
                     let id = tc["id"].as_str()?.to_string();
                     let name = tc["function"]["name"].as_str()?.to_string();
                     let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
-                    let arguments =
-                        serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
+                    let arguments = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
                     Some(ToolCall {
                         id,
                         name,
@@ -436,11 +424,7 @@ mod tests {
 
     use std::sync::{Arc, Mutex};
 
-    use axum::{
-        Router,
-        extract::Request,
-        routing::post,
-    };
+    use axum::{Router, extract::Request, routing::post};
 
     /// Captured request data for assertions.
     #[derive(Default, Clone)]
@@ -474,8 +458,7 @@ mod tests {
                     let body_bytes = axum::body::to_bytes(req.into_body(), 1024 * 1024)
                         .await
                         .unwrap_or_default();
-                    let body: Option<serde_json::Value> =
-                        serde_json::from_slice(&body_bytes).ok();
+                    let body: Option<serde_json::Value> = serde_json::from_slice(&body_bytes).ok();
 
                     cap.lock().unwrap().push(CapturedRequest { headers, body });
 

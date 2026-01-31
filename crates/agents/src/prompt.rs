@@ -6,12 +6,23 @@ use crate::tool_registry::ToolRegistry;
 /// tool-calling mechanism (e.g. OpenAI function calling, Anthropic tool_use).
 /// When false, tools are described in the prompt itself and the LLM is
 /// instructed to emit tool calls as JSON blocks that the runner can parse.
-pub fn build_system_prompt(tools: &ToolRegistry, native_tools: bool) -> String {
+pub fn build_system_prompt(
+    tools: &ToolRegistry,
+    native_tools: bool,
+    project_context: Option<&str>,
+) -> String {
     let tool_schemas = tools.list_schemas();
 
     let mut prompt = String::from(
         "You are a helpful assistant with access to tools for executing shell commands.\n\n",
     );
+
+    // Inject project context (CLAUDE.md, AGENTS.md, etc.) early so the LLM
+    // sees project-specific instructions before tool schemas.
+    if let Some(ctx) = project_context {
+        prompt.push_str(ctx);
+        prompt.push('\n');
+    }
 
     if !tool_schemas.is_empty() {
         prompt.push_str("## Available Tools\n\n");
@@ -58,7 +69,7 @@ mod tests {
     #[test]
     fn test_native_prompt_does_not_include_tool_call_format() {
         let tools = ToolRegistry::new();
-        let prompt = build_system_prompt(&tools, true);
+        let prompt = build_system_prompt(&tools, true, None);
         assert!(!prompt.contains("```tool_call"));
     }
 
@@ -87,7 +98,7 @@ mod tests {
         }
         tools.register(Box::new(Dummy));
 
-        let prompt = build_system_prompt(&tools, false);
+        let prompt = build_system_prompt(&tools, false, None);
         assert!(prompt.contains("```tool_call"));
         assert!(prompt.contains("### test"));
     }
