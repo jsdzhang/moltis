@@ -21,6 +21,12 @@ pub trait ApprovalBroadcaster: Send + Sync {
     async fn broadcast_request(&self, request_id: &str, command: &str) -> Result<()>;
 }
 
+/// Provider of environment variables to inject into sandbox execution.
+#[async_trait]
+pub trait EnvVarProvider: Send + Sync {
+    async fn get_env_vars(&self) -> Vec<(String, String)>;
+}
+
 /// Result of a shell command execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecResult {
@@ -123,6 +129,7 @@ pub struct ExecTool {
     sandbox: Arc<dyn Sandbox>,
     sandbox_id: Option<SandboxId>,
     sandbox_router: Option<Arc<SandboxRouter>>,
+    env_provider: Option<Arc<dyn EnvVarProvider>>,
 }
 
 impl Default for ExecTool {
@@ -136,6 +143,7 @@ impl Default for ExecTool {
             sandbox: Arc::new(NoSandbox),
             sandbox_id: None,
             sandbox_router: None,
+            env_provider: None,
         }
     }
 }
@@ -162,6 +170,12 @@ impl ExecTool {
     /// Attach a sandbox router for per-session dynamic sandbox resolution.
     pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
         self.sandbox_router = Some(router);
+        self
+    }
+
+    /// Attach an environment variable provider for sandbox injection.
+    pub fn with_env_provider(mut self, provider: Arc<dyn EnvVarProvider>) -> Self {
+        self.env_provider = Some(provider);
         self
     }
 
@@ -265,11 +279,17 @@ impl AgentTool for ExecTool {
             }
         }
 
+        let env = if let Some(ref provider) = self.env_provider {
+            provider.get_env_vars().await
+        } else {
+            Vec::new()
+        };
+
         let opts = ExecOpts {
             timeout: Duration::from_secs(timeout_secs),
             max_output_bytes: self.max_output_bytes,
             working_dir,
-            env: Vec::new(),
+            env,
         };
 
         // Resolve sandbox: dynamic per-session router takes priority over static sandbox.
@@ -485,6 +505,26 @@ mod tests {
         };
         let tool = ExecTool::default().with_sandbox(sandbox, id);
         tool.cleanup().await.unwrap();
+    }
+
+    struct TestEnvProvider;
+
+    #[async_trait]
+    impl EnvVarProvider for TestEnvProvider {
+        async fn get_env_vars(&self) -> Vec<(String, String)> {
+            vec![("TEST_INJECTED".into(), "hello_from_env".into())]
+        }
+    }
+
+    #[tokio::test]
+    async fn test_exec_tool_with_env_provider() {
+        let provider: Arc<dyn EnvVarProvider> = Arc::new(TestEnvProvider);
+        let tool = ExecTool::default().with_env_provider(provider);
+        let result = tool
+            .execute(serde_json::json!({ "command": "echo $TEST_INJECTED" }))
+            .await
+            .unwrap();
+        assert_eq!(result["stdout"].as_str().unwrap().trim(), "hello_from_env");
     }
 
     #[tokio::test]
