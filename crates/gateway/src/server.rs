@@ -379,39 +379,7 @@ pub async fn start_gateway(
     services = services.with_cron(live_cron);
 
     // Build sandbox router from config (shared across sessions).
-    let sandbox_config = moltis_tools::sandbox::SandboxConfig {
-        mode: match config.tools.exec.sandbox.mode.as_str() {
-            "all" => moltis_tools::sandbox::SandboxMode::All,
-            "non-main" | "nonmain" => moltis_tools::sandbox::SandboxMode::NonMain,
-            _ => moltis_tools::sandbox::SandboxMode::Off,
-        },
-        scope: match config.tools.exec.sandbox.scope.as_str() {
-            "agent" => moltis_tools::sandbox::SandboxScope::Agent,
-            "shared" => moltis_tools::sandbox::SandboxScope::Shared,
-            _ => moltis_tools::sandbox::SandboxScope::Session,
-        },
-        workspace_mount: match config.tools.exec.sandbox.workspace_mount.as_str() {
-            "rw" => moltis_tools::sandbox::WorkspaceMount::Rw,
-            "none" => moltis_tools::sandbox::WorkspaceMount::None,
-            _ => moltis_tools::sandbox::WorkspaceMount::Ro,
-        },
-        image: config.tools.exec.sandbox.image.clone(),
-        container_prefix: config.tools.exec.sandbox.container_prefix.clone(),
-        no_network: config.tools.exec.sandbox.no_network,
-        backend: config.tools.exec.sandbox.backend.clone(),
-        resource_limits: moltis_tools::sandbox::ResourceLimits {
-            memory_limit: config
-                .tools
-                .exec
-                .sandbox
-                .resource_limits
-                .memory_limit
-                .clone(),
-            cpu_quota: config.tools.exec.sandbox.resource_limits.cpu_quota,
-            pids_max: config.tools.exec.sandbox.resource_limits.pids_max,
-        },
-        packages: config.tools.exec.sandbox.packages.clone(),
-    };
+    let sandbox_config = moltis_tools::sandbox::SandboxConfig::from(&config.tools.exec.sandbox);
     let sandbox_router = Arc::new(moltis_tools::sandbox::SandboxRouter::new(sandbox_config));
 
     // Spawn background image pre-build. This bakes configured packages into a

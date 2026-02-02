@@ -295,10 +295,41 @@ function handleLogEntry(payload) {
 	}
 }
 
+function handleSandboxImageBuild(payload) {
+	var isChatPage = currentPrefix === "/chats";
+	if (!isChatPage) return;
+	if (payload.phase === "start") {
+		chatAddMsg("system", "Building sandbox image (installing packages)\u2026");
+	} else if (payload.phase === "done") {
+		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
+		var msg = payload.built ? `Sandbox image ready: ${payload.tag}` : `Sandbox image already cached: ${payload.tag}`;
+		chatAddMsg("system", msg);
+	} else if (payload.phase === "error") {
+		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
+		chatAddMsg("error", `Sandbox image build failed: ${payload.error || "unknown"}`);
+	}
+}
+
+function handleSandboxImageProvision(payload) {
+	var isChatPage = currentPrefix === "/chats";
+	if (!isChatPage) return;
+	if (payload.phase === "start") {
+		chatAddMsg("system", "Provisioning sandbox packages\u2026");
+	} else if (payload.phase === "done") {
+		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
+		chatAddMsg("system", "Sandbox packages provisioned");
+	} else if (payload.phase === "error") {
+		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
+		chatAddMsg("error", `Sandbox provisioning failed: ${payload.error || "unknown"}`);
+	}
+}
+
 var eventHandlers = {
 	chat: handleChatEvent,
 	"exec.approval.requested": handleApprovalEvent,
 	"logs.entry": handleLogEntry,
+	"sandbox.image.build": handleSandboxImageBuild,
+	"sandbox.image.provision": handleSandboxImageProvision,
 };
 
 function dispatchFrame(frame) {

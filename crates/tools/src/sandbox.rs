@@ -123,6 +123,38 @@ impl Default for SandboxConfig {
     }
 }
 
+impl From<&moltis_config::schema::SandboxConfig> for SandboxConfig {
+    fn from(cfg: &moltis_config::schema::SandboxConfig) -> Self {
+        Self {
+            mode: match cfg.mode.as_str() {
+                "all" => SandboxMode::All,
+                "non-main" | "nonmain" => SandboxMode::NonMain,
+                _ => SandboxMode::Off,
+            },
+            scope: match cfg.scope.as_str() {
+                "agent" => SandboxScope::Agent,
+                "shared" => SandboxScope::Shared,
+                _ => SandboxScope::Session,
+            },
+            workspace_mount: match cfg.workspace_mount.as_str() {
+                "rw" => WorkspaceMount::Rw,
+                "none" => WorkspaceMount::None,
+                _ => WorkspaceMount::Ro,
+            },
+            image: cfg.image.clone(),
+            container_prefix: cfg.container_prefix.clone(),
+            no_network: cfg.no_network,
+            backend: cfg.backend.clone(),
+            resource_limits: ResourceLimits {
+                memory_limit: cfg.resource_limits.memory_limit.clone(),
+                cpu_quota: cfg.resource_limits.cpu_quota,
+                pids_max: cfg.resource_limits.pids_max,
+            },
+            packages: cfg.packages.clone(),
+        }
+    }
+}
+
 /// Sandbox identifier — session or agent scoped.
 #[derive(Debug, Clone)]
 pub struct SandboxId {

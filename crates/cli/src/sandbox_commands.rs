@@ -41,31 +41,7 @@ async fn list() -> Result<()> {
 
 async fn build() -> Result<()> {
     let config = moltis_config::discover_and_load();
-    let sandbox_config = sandbox::SandboxConfig {
-        mode: match config.tools.exec.sandbox.mode.as_str() {
-            "all" => sandbox::SandboxMode::All,
-            "non-main" | "nonmain" => sandbox::SandboxMode::NonMain,
-            _ => sandbox::SandboxMode::Off,
-        },
-        scope: sandbox::SandboxScope::default(),
-        workspace_mount: sandbox::WorkspaceMount::default(),
-        image: config.tools.exec.sandbox.image.clone(),
-        container_prefix: config.tools.exec.sandbox.container_prefix.clone(),
-        no_network: config.tools.exec.sandbox.no_network,
-        backend: config.tools.exec.sandbox.backend.clone(),
-        resource_limits: sandbox::ResourceLimits {
-            memory_limit: config
-                .tools
-                .exec
-                .sandbox
-                .resource_limits
-                .memory_limit
-                .clone(),
-            cpu_quota: config.tools.exec.sandbox.resource_limits.cpu_quota,
-            pids_max: config.tools.exec.sandbox.resource_limits.pids_max,
-        },
-        packages: config.tools.exec.sandbox.packages.clone(),
-    };
+    let sandbox_config = sandbox::SandboxConfig::from(&config.tools.exec.sandbox);
 
     let packages = sandbox_config.packages.clone();
     if packages.is_empty() {
