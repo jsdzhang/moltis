@@ -112,6 +112,9 @@
     outline: none;
   }
 
+  .btn-row { display: flex; gap: 8px; align-items: center; }
+  .btn-row-mt { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+
   .provider-btn {
     border-radius: var(--radius-sm);
     cursor: pointer;
