@@ -59,7 +59,8 @@ uuid                  = { workspace = true }
 webauthn-rs           = { features = ["danger-allow-state-serialisation"], version = "0.5" }
 webauthn-rs-proto     = "0.5"
 # OpenSSL vendored for cross-compilation (required by webauthn-rs)
-openssl = { workspace = true }
+openssl     = { workspace = true }
+urlencoding = "2.1.3"
 
 [features]
 default          = ["file-watcher", "local-llm", "tailscale", "tls", "web-ui"]

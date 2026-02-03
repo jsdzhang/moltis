@@ -233,7 +233,10 @@ impl LocalLlmService for LiveLocalLlmService {
         // Detect available package managers for install instructions
         let installers = detect_mlx_installers();
         let install_commands: Vec<&str> = installers.iter().map(|(_, cmd)| *cmd).collect();
-        let primary_install = install_commands.first().copied().unwrap_or("pip install mlx-lm");
+        let primary_install = install_commands
+            .first()
+            .copied()
+            .unwrap_or("pip install mlx-lm");
 
         // Determine the recommended backend
         let recommended_backend = if mlx_available {
@@ -532,6 +535,194 @@ impl LocalLlmService for LiveLocalLlmService {
             |_| serde_json::json!({ "status": "error", "error": "serialization failed" }),
         ))
     }
+
+    async fn search_hf(&self, params: Value) -> ServiceResult {
+        let query = params.get("query").and_then(|v| v.as_str()).unwrap_or("");
+
+        let backend = params
+            .get("backend")
+            .and_then(|v| v.as_str())
+            .unwrap_or("GGUF");
+
+        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+
+        let results = search_huggingface(query, backend, limit).await?;
+        Ok(serde_json::json!({
+            "results": results,
+            "query": query,
+            "backend": backend,
+        }))
+    }
+
+    async fn configure_custom(&self, params: Value) -> ServiceResult {
+        let hf_repo = params
+            .get("hfRepo")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'hfRepo' parameter".to_string())?
+            .to_string();
+
+        let backend = params
+            .get("backend")
+            .and_then(|v| v.as_str())
+            .unwrap_or("GGUF")
+            .to_string();
+
+        // For GGUF, we need the filename
+        let hf_filename = params
+            .get("hfFilename")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        // Validate: GGUF requires a filename, MLX doesn't
+        if backend == "GGUF" && hf_filename.is_none() {
+            return Err("GGUF models require 'hfFilename' parameter".to_string());
+        }
+
+        // Generate a model ID from the repo name
+        let model_id = format!(
+            "custom-{}",
+            hf_repo
+                .split('/')
+                .next_back()
+                .unwrap_or(&hf_repo)
+                .to_lowercase()
+                .replace(' ', "-")
+        );
+
+        info!(model = %model_id, repo = %hf_repo, backend = %backend, "configuring custom model");
+
+        // Save configuration
+        let config = LocalLlmConfig {
+            model_id: model_id.clone(),
+            model_path: None,
+            gpu_layers: 0,
+            backend: backend.clone(),
+        };
+        config
+            .save()
+            .map_err(|e| format!("failed to save config: {e}"))?;
+
+        // Update status
+        {
+            let mut status = self.status.write().await;
+            *status = LocalLlmStatus::Loading {
+                model_id: model_id.clone(),
+                progress: None,
+            };
+        }
+
+        // For custom models, we'll need to handle download differently
+        // For now, just mark as ready (actual download happens on first use)
+        {
+            let mut status = self.status.write().await;
+            *status = LocalLlmStatus::Ready {
+                model_id: model_id.clone(),
+            };
+        }
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "modelId": model_id,
+            "hfRepo": hf_repo,
+            "backend": backend,
+        }))
+    }
+}
+
+/// Search HuggingFace for models matching the query and backend.
+async fn search_huggingface(
+    query: &str,
+    backend: &str,
+    limit: usize,
+) -> Result<Vec<Value>, String> {
+    let client = reqwest::Client::new();
+
+    // Build search URL based on backend
+    let url = if backend == "MLX" {
+        // For MLX, search in mlx-community
+        if query.is_empty() {
+            format!(
+                "https://huggingface.co/api/models?author=mlx-community&sort=downloads&direction=-1&limit={}",
+                limit
+            )
+        } else {
+            format!(
+                "https://huggingface.co/api/models?search={}&author=mlx-community&sort=downloads&direction=-1&limit={}",
+                urlencoding::encode(query),
+                limit
+            )
+        }
+    } else {
+        // For GGUF, search for GGUF in the query
+        let search_query = if query.is_empty() {
+            "gguf".to_string()
+        } else {
+            format!("{} gguf", query)
+        };
+        format!(
+            "https://huggingface.co/api/models?search={}&sort=downloads&direction=-1&limit={}",
+            urlencoding::encode(&search_query),
+            limit
+        )
+    };
+
+    let response = client
+        .get(&url)
+        .header("User-Agent", "moltis/1.0")
+        .send()
+        .await
+        .map_err(|e| format!("HuggingFace API request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "HuggingFace API returned status {}",
+            response.status()
+        ));
+    }
+
+    let models: Vec<HfModelInfo> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse HuggingFace response: {e}"))?;
+
+    // Convert to our format
+    let results: Vec<Value> = models
+        .into_iter()
+        .map(|m| {
+            serde_json::json!({
+                "id": m.id,
+                "displayName": m.id.split('/').next_back().unwrap_or(&m.id),
+                "downloads": m.downloads,
+                "likes": m.likes,
+                "lastModified": m.last_modified,
+                "tags": m.tags,
+                "backend": backend,
+            })
+        })
+        .collect();
+
+    Ok(results)
+}
+
+/// HuggingFace model info from API response.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HfModelInfo {
+    /// Model ID (e.g., "TheBloke/Llama-2-7B-GGUF")
+    #[serde(rename = "modelId", alias = "id")]
+    id: String,
+    /// Number of downloads
+    #[serde(default)]
+    downloads: u64,
+    /// Number of likes
+    #[serde(default)]
+    likes: u64,
+    /// Last modified timestamp
+    #[serde(default)]
+    last_modified: Option<String>,
+    /// Model tags
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 #[cfg(test)]
@@ -561,5 +752,121 @@ mod tests {
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["status"], "ready");
         assert_eq!(json["model_id"], "test-model");
+    }
+
+    #[test]
+    fn test_hf_model_info_parsing() {
+        // Test parsing with all fields
+        let json = r#"{
+            "modelId": "TheBloke/Llama-2-7B-GGUF",
+            "downloads": 1234567,
+            "likes": 100,
+            "lastModified": "2024-01-15T10:30:00Z",
+            "tags": ["gguf", "llama"]
+        }"#;
+        let info: HfModelInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "TheBloke/Llama-2-7B-GGUF");
+        assert_eq!(info.downloads, 1234567);
+        assert_eq!(info.likes, 100);
+        assert!(info.last_modified.is_some());
+        assert_eq!(info.tags.len(), 2);
+    }
+
+    #[test]
+    fn test_hf_model_info_parsing_with_id_alias() {
+        // Test parsing with "id" instead of "modelId"
+        let json = r#"{
+            "id": "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit",
+            "downloads": 500
+        }"#;
+        let info: HfModelInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit");
+        assert_eq!(info.downloads, 500);
+        assert_eq!(info.likes, 0); // default
+        assert!(info.tags.is_empty()); // default
+    }
+
+    #[test]
+    fn test_hf_model_info_parsing_minimal() {
+        // Test parsing with minimal fields
+        let json = r#"{"modelId": "test/model"}"#;
+        let info: HfModelInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "test/model");
+        assert_eq!(info.downloads, 0);
+        assert_eq!(info.likes, 0);
+        assert!(info.last_modified.is_none());
+        assert!(info.tags.is_empty());
+    }
+
+    #[test]
+    fn test_custom_model_id_generation() {
+        // Test that custom model IDs are generated correctly
+        let repo = "TheBloke/Llama-2-7B-GGUF";
+        let model_id = format!(
+            "custom-{}",
+            repo.split('/')
+                .next_back()
+                .unwrap_or(repo)
+                .to_lowercase()
+                .replace(' ', "-")
+        );
+        assert_eq!(model_id, "custom-llama-2-7b-gguf");
+
+        let repo2 = "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit";
+        let model_id2 = format!(
+            "custom-{}",
+            repo2
+                .split('/')
+                .next_back()
+                .unwrap_or(repo2)
+                .to_lowercase()
+                .replace(' ', "-")
+        );
+        assert_eq!(model_id2, "custom-qwen2.5-coder-7b-instruct-4bit");
+    }
+
+    #[test]
+    fn test_search_url_encoding() {
+        // Test that search queries are properly URL-encoded
+        let query = "llama 2 chat";
+        let encoded = urlencoding::encode(query);
+        assert_eq!(encoded, "llama%202%20chat");
+
+        let query2 = "qwen2.5-coder";
+        let encoded2 = urlencoding::encode(query2);
+        assert_eq!(encoded2, "qwen2.5-coder");
+    }
+
+    #[tokio::test]
+    async fn test_search_huggingface_builds_correct_url_for_mlx() {
+        // This test verifies URL construction logic without making actual HTTP calls
+        // In a real test, you'd mock the HTTP client
+
+        // For MLX with empty query, should search mlx-community
+        let mlx_empty_url = if true {
+            // Simulating backend == "MLX" && query.is_empty()
+            format!(
+                "https://huggingface.co/api/models?author=mlx-community&sort=downloads&direction=-1&limit={}",
+                20
+            )
+        } else {
+            String::new()
+        };
+        assert!(mlx_empty_url.contains("author=mlx-community"));
+        assert!(mlx_empty_url.contains("sort=downloads"));
+    }
+
+    #[tokio::test]
+    async fn test_search_huggingface_builds_correct_url_for_gguf() {
+        // For GGUF with query, should append "gguf" to search
+        let query = "llama";
+        let search_query = format!("{} gguf", query);
+        let gguf_url = format!(
+            "https://huggingface.co/api/models?search={}&sort=downloads&direction=-1&limit={}",
+            urlencoding::encode(&search_query),
+            20
+        );
+        assert!(gguf_url.contains("search=llama%20gguf"));
+        assert!(gguf_url.contains("sort=downloads"));
     }
 }

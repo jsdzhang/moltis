@@ -1303,17 +1303,21 @@ pub trait ProviderSetupService: Send + Sync {
 
 // ── Local LLM ───────────────────────────────────────────────────────────────
 
-/// Service for managing local GGUF LLM provider.
+/// Service for managing local LLM provider (GGUF/MLX).
 #[async_trait]
 pub trait LocalLlmService: Send + Sync {
     /// Get system info (RAM, GPU, memory tier).
     async fn system_info(&self) -> ServiceResult;
     /// Get available models with recommendations based on memory tier.
     async fn models(&self) -> ServiceResult;
-    /// Configure and load a model by ID.
+    /// Configure and load a model by ID (from registry).
     async fn configure(&self, params: Value) -> ServiceResult;
     /// Get current provider status (loading/loaded/error).
     async fn status(&self) -> ServiceResult;
+    /// Search HuggingFace for models by query and backend.
+    async fn search_hf(&self, params: Value) -> ServiceResult;
+    /// Configure a custom model from HuggingFace repo URL.
+    async fn configure_custom(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopLocalLlmService;
@@ -1334,6 +1338,14 @@ impl LocalLlmService for NoopLocalLlmService {
 
     async fn status(&self) -> ServiceResult {
         Ok(serde_json::json!({ "status": "unavailable" }))
+    }
+
+    async fn search_hf(&self, _params: Value) -> ServiceResult {
+        Err("local-llm feature not enabled".into())
+    }
+
+    async fn configure_custom(&self, _params: Value) -> ServiceResult {
+        Err("local-llm feature not enabled".into())
     }
 }
 

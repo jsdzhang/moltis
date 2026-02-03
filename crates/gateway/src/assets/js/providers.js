@@ -485,6 +485,10 @@ function renderLocalModelSelection(provider, sysInfo, modelsData) {
 					if (wrapper._renderModelsForBackend) {
 						wrapper._renderModelsForBackend(b.id);
 					}
+					// Update filename input visibility
+					if (wrapper._updateFilenameVisibility) {
+						wrapper._updateFilenameVisibility(b.id);
+					}
 				});
 			}
 
@@ -515,7 +519,7 @@ function renderLocalModelSelection(provider, sysInfo, modelsData) {
 	function renderModelsForBackend(backend) {
 		modelsList.innerHTML = "";
 		var recommended = modelsData.recommended || [];
-		var filtered = recommended.filter((m) => m.backend === backend);
+		var filtered = recommended.filter((mdl) => mdl.backend === backend);
 		if (filtered.length === 0) {
 			var empty = document.createElement("div");
 			empty.className = "text-xs text-[var(--muted)] py-4 text-center";
@@ -537,6 +541,143 @@ function renderLocalModelSelection(provider, sysInfo, modelsData) {
 
 	wrapper.appendChild(modelsList);
 
+	// HuggingFace search section
+	var searchSection = document.createElement("div");
+	searchSection.className = "flex flex-col gap-2 mt-4 pt-4 border-t border-[var(--border)]";
+
+	var searchLabel = document.createElement("div");
+	searchLabel.className = "text-xs font-medium text-[var(--text-strong)]";
+	searchLabel.textContent = "Search HuggingFace";
+	searchSection.appendChild(searchLabel);
+
+	var searchRow = document.createElement("div");
+	searchRow.className = "flex gap-2";
+
+	var searchInput = document.createElement("input");
+	searchInput.type = "text";
+	searchInput.placeholder = "Search models...";
+	searchInput.className = "provider-input flex-1";
+	searchRow.appendChild(searchInput);
+
+	var searchBtn = document.createElement("button");
+	searchBtn.className = "provider-btn provider-btn-secondary";
+	searchBtn.textContent = "Search";
+	searchRow.appendChild(searchBtn);
+
+	searchSection.appendChild(searchRow);
+
+	var searchResults = document.createElement("div");
+	searchResults.className = "flex flex-col gap-2 max-h-48 overflow-y-auto";
+	searchResults.id = "hf-search-results";
+	searchSection.appendChild(searchResults);
+
+	// Search handler
+	var doSearch = async () => {
+		var query = searchInput.value.trim();
+		searchResults.innerHTML = '<div class="text-xs text-[var(--muted)] py-2">Searching...</div>';
+		var res = await sendRpc("providers.local.search_hf", {
+			query: query,
+			backend: selectedBackend,
+			limit: 15,
+		});
+		searchResults.innerHTML = "";
+		if (!(res?.ok && res.payload?.results?.length)) {
+			searchResults.innerHTML = '<div class="text-xs text-[var(--muted)] py-2">No results found</div>';
+			return;
+		}
+		res.payload.results.forEach((m) => {
+			var card = createHfSearchResultCard(m, provider);
+			searchResults.appendChild(card);
+		});
+	};
+
+	searchBtn.addEventListener("click", doSearch);
+	searchInput.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") doSearch();
+	});
+
+	wrapper.appendChild(searchSection);
+
+	// Custom repo section
+	var customSection = document.createElement("div");
+	customSection.className = "flex flex-col gap-2 mt-4 pt-4 border-t border-[var(--border)]";
+
+	var customLabel = document.createElement("div");
+	customLabel.className = "text-xs font-medium text-[var(--text-strong)]";
+	customLabel.textContent = "Or enter HuggingFace repo URL";
+	customSection.appendChild(customLabel);
+
+	var customRow = document.createElement("div");
+	customRow.className = "flex gap-2";
+
+	var customInput = document.createElement("input");
+	customInput.type = "text";
+	customInput.placeholder = selectedBackend === "MLX" ? "mlx-community/Model-Name" : "TheBloke/Model-GGUF";
+	customInput.className = "provider-input flex-1";
+	customRow.appendChild(customInput);
+
+	var customBtn = document.createElement("button");
+	customBtn.className = "provider-btn";
+	customBtn.textContent = "Use";
+	customRow.appendChild(customBtn);
+
+	customSection.appendChild(customRow);
+
+	// GGUF filename input (only for GGUF backend)
+	var filenameRow = document.createElement("div");
+	filenameRow.className = "flex gap-2";
+	filenameRow.style.display = selectedBackend === "GGUF" ? "flex" : "none";
+
+	var filenameInput = document.createElement("input");
+	filenameInput.type = "text";
+	filenameInput.placeholder = "model-file.gguf (required for GGUF)";
+	filenameInput.className = "provider-input flex-1";
+	filenameRow.appendChild(filenameInput);
+
+	customSection.appendChild(filenameRow);
+
+	// Update filename visibility when backend changes
+	wrapper._updateFilenameVisibility = (backend) => {
+		filenameRow.style.display = backend === "GGUF" ? "flex" : "none";
+		customInput.placeholder = backend === "MLX" ? "mlx-community/Model-Name" : "TheBloke/Model-GGUF";
+	};
+
+	// Custom repo handler
+	customBtn.addEventListener("click", async () => {
+		var repo = customInput.value.trim();
+		if (!repo) return;
+
+		var params = {
+			hfRepo: repo,
+			backend: selectedBackend,
+		};
+		if (selectedBackend === "GGUF") {
+			var filename = filenameInput.value.trim();
+			if (!filename) {
+				filenameInput.focus();
+				return;
+			}
+			params.hfFilename = filename;
+		}
+
+		customBtn.disabled = true;
+		customBtn.textContent = "Configuring...";
+		var res = await sendRpc("providers.local.configure_custom", params);
+		customBtn.disabled = false;
+		customBtn.textContent = "Use";
+
+		if (res?.ok) {
+			fetchModels();
+			if (S.refreshProvidersPage) S.refreshProvidersPage();
+			showModelDownloadProgress({ id: res.payload.modelId, displayName: repo }, provider);
+		} else {
+			var err = res?.error?.message || "Failed to configure model";
+			searchResults.innerHTML = `<div class="text-xs text-[var(--error)] py-2">${err}</div>`;
+		}
+	});
+
+	wrapper.appendChild(customSection);
+
 	// Back button
 	var btns = document.createElement("div");
 	btns.className = "btn-row mt-4";
@@ -549,6 +690,71 @@ function renderLocalModelSelection(provider, sysInfo, modelsData) {
 	wrapper.appendChild(btns);
 
 	m.body.appendChild(wrapper);
+}
+
+// Create a card for HuggingFace search result
+function createHfSearchResultCard(model, provider) {
+	var card = document.createElement("div");
+	card.className = "model-card";
+
+	var header = document.createElement("div");
+	header.className = "flex items-center justify-between";
+
+	var name = document.createElement("span");
+	name.className = "text-sm font-medium text-[var(--text)]";
+	name.textContent = model.displayName;
+	header.appendChild(name);
+
+	var stats = document.createElement("div");
+	stats.className = "flex gap-2 text-xs text-[var(--muted)]";
+	if (model.downloads) {
+		var dl = document.createElement("span");
+		dl.textContent = `↓${formatDownloads(model.downloads)}`;
+		stats.appendChild(dl);
+	}
+	if (model.likes) {
+		var likes = document.createElement("span");
+		likes.textContent = `♥${model.likes}`;
+		stats.appendChild(likes);
+	}
+	header.appendChild(stats);
+
+	card.appendChild(header);
+
+	var repo = document.createElement("div");
+	repo.className = "text-xs text-[var(--muted)] mt-1";
+	repo.textContent = model.id;
+	card.appendChild(repo);
+
+	card.addEventListener("click", async () => {
+		var params = {
+			hfRepo: model.id,
+			backend: model.backend,
+		};
+		// For GGUF, we'd need to fetch the file list - for now, prompt user
+		if (model.backend === "GGUF") {
+			var filename = prompt("Enter the GGUF filename (e.g., model-q4_k_m.gguf):");
+			if (!filename) return;
+			params.hfFilename = filename;
+		}
+		card.style.opacity = "0.5";
+		var res = await sendRpc("providers.local.configure_custom", params);
+		card.style.opacity = "1";
+		if (res?.ok) {
+			fetchModels();
+			if (S.refreshProvidersPage) S.refreshProvidersPage();
+			showModelDownloadProgress({ id: res.payload.modelId, displayName: model.displayName }, provider);
+		}
+	});
+
+	return card;
+}
+
+// Format download count (e.g., 1234567 -> "1.2M")
+function formatDownloads(n) {
+	if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+	if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+	return n.toString();
 }
 
 function createModelCard(model, provider) {

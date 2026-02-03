@@ -524,7 +524,14 @@ mod tests {
                 model.id,
                 url
             );
-            assert!(url.ends_with(".gguf"), "URL should end with .gguf: {}", url);
+            // Only GGUF models should have .gguf URLs; MLX uses the repo directly
+            if model.backend == ModelBackend::Gguf {
+                assert!(
+                    url.ends_with(".gguf"),
+                    "GGUF URL should end with .gguf: {}",
+                    url
+                );
+            }
         }
     }
 
@@ -537,5 +544,58 @@ mod tests {
                 model.id
             );
         }
+    }
+
+    #[test]
+    fn test_models_for_tier_and_backend() {
+        // GGUF models for small tier
+        let gguf_small = models_for_tier_and_backend(MemoryTier::Small, ModelBackend::Gguf);
+        assert!(!gguf_small.is_empty());
+        for m in &gguf_small {
+            assert_eq!(m.backend, ModelBackend::Gguf);
+            assert!(m.min_ram_gb <= 8);
+        }
+
+        // MLX models for small tier
+        let mlx_small = models_for_tier_and_backend(MemoryTier::Small, ModelBackend::Mlx);
+        assert!(!mlx_small.is_empty());
+        for m in &mlx_small {
+            assert_eq!(m.backend, ModelBackend::Mlx);
+            assert!(m.min_ram_gb <= 8);
+        }
+
+        // All GGUF models
+        let all_gguf = models_for_tier_and_backend(MemoryTier::Large, ModelBackend::Gguf);
+        for m in &all_gguf {
+            assert_eq!(m.backend, ModelBackend::Gguf);
+        }
+
+        // All MLX models
+        let all_mlx = models_for_tier_and_backend(MemoryTier::Large, ModelBackend::Mlx);
+        for m in &all_mlx {
+            assert_eq!(m.backend, ModelBackend::Mlx);
+        }
+
+        // Combined should equal total
+        assert_eq!(all_gguf.len() + all_mlx.len(), MODEL_REGISTRY.len());
+    }
+
+    #[test]
+    fn test_suggest_model_for_backend() {
+        // Should suggest a GGUF model for GGUF backend
+        let gguf_suggestion = suggest_model_for_backend(MemoryTier::Medium, ModelBackend::Gguf);
+        assert!(gguf_suggestion.is_some());
+        assert_eq!(gguf_suggestion.unwrap().backend, ModelBackend::Gguf);
+
+        // Should suggest an MLX model for MLX backend
+        let mlx_suggestion = suggest_model_for_backend(MemoryTier::Medium, ModelBackend::Mlx);
+        assert!(mlx_suggestion.is_some());
+        assert_eq!(mlx_suggestion.unwrap().backend, ModelBackend::Mlx);
+    }
+
+    #[test]
+    fn test_model_backend_display() {
+        assert_eq!(ModelBackend::Gguf.to_string(), "GGUF");
+        assert_eq!(ModelBackend::Mlx.to_string(), "MLX");
     }
 }

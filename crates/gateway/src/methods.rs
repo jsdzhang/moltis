@@ -78,6 +78,7 @@ const READ_METHODS: &[&str] = &[
     "providers.local.system_info",
     "providers.local.models",
     "providers.local.status",
+    "providers.local.search_hf",
     "mcp.list",
     "mcp.status",
     "mcp.tools",
@@ -105,6 +106,7 @@ const WRITE_METHODS: &[&str] = &[
     "providers.remove_key",
     "providers.oauth.start",
     "providers.local.configure",
+    "providers.local.configure_custom",
     "channels.add",
     "channels.remove",
     "channels.update",
@@ -2636,6 +2638,32 @@ impl MethodRegistry {
                         .services
                         .local_llm
                         .status()
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+        self.register(
+            "providers.local.search_hf",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .local_llm
+                        .search_hf(ctx.params.clone())
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
+                })
+            }),
+        );
+        self.register(
+            "providers.local.configure_custom",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    ctx.state
+                        .services
+                        .local_llm
+                        .configure_custom(ctx.params.clone())
                         .await
                         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e))
                 })
