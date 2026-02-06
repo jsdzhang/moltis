@@ -941,6 +941,16 @@ impl PluginsService for NoopPluginsService {
     }
 
     async fn skill_disable(&self, params: Value) -> ServiceResult {
+        let source = params
+            .get("source")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Personal/project skills live as files — delete the directory to disable.
+        if source == "personal" || source == "project" {
+            return delete_discovered_skill(source, &params);
+        }
+
         toggle_plugin_skill(&params, false)
     }
 
@@ -1041,6 +1051,36 @@ fn toggle_plugin_skill(params: &Value, enabled: bool) -> ServiceResult {
     store.save(&manifest).map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({ "source": source, "skill": skill_name, "enabled": enabled }))
+}
+
+/// Delete a personal or project skill directory to disable it.
+fn delete_discovered_skill(source_type: &str, params: &Value) -> ServiceResult {
+    let skill_name = params
+        .get("skill")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "missing 'skill' parameter".to_string())?;
+
+    if !moltis_skills::parse::validate_name(skill_name) {
+        return Err(format!("invalid skill name '{skill_name}'"));
+    }
+
+    let search_dir = if source_type == "personal" {
+        moltis_config::data_dir().join("skills")
+    } else {
+        std::env::current_dir()
+            .unwrap_or_default()
+            .join(".moltis/skills")
+    };
+
+    let skill_dir = search_dir.join(skill_name);
+    if !skill_dir.exists() {
+        return Err(format!("skill '{skill_name}' not found"));
+    }
+
+    std::fs::remove_dir_all(&skill_dir)
+        .map_err(|e| format!("failed to delete skill '{skill_name}': {e}"))?;
+
+    Ok(serde_json::json!({ "source": source_type, "skill": skill_name, "deleted": true }))
 }
 
 /// Load skill detail for a personal or project skill by name.

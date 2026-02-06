@@ -282,11 +282,19 @@ function SkillDetail(props) {
 
 	if (!d) return null;
 
+	var isDisc = d.source === "personal" || d.source === "project";
+
 	function onToggle() {
 		if (!S.connected) return;
+		if (isDisc && d.enabled && !confirm(`Delete skill "${d.name}"? This removes the SKILL.md file.`)) {
+			return;
+		}
 		var method = d.enabled ? "skills.skill.disable" : "skills.skill.enable";
 		sendRpc(method, { source: props.repoSource, skill: d.name }).then((r) => {
-			if (r?.ok) fetchAll();
+			if (r?.ok) {
+				if (isDisc) onClose();
+				fetchAll();
+			}
 		});
 	}
 
@@ -299,16 +307,20 @@ function SkillDetail(props) {
         ${eligibilityBadge(d)}
       </div>
       <div style="display:flex;align-items:center;gap:6px">
-        <button onClick=${onToggle} style=${{
-					background: d.enabled ? "none" : "var(--accent)",
-					border: "1px solid var(--border)",
-					borderRadius: "var(--radius-sm)",
-					fontSize: ".72rem",
-					padding: "3px 10px",
-					cursor: "pointer",
-					color: d.enabled ? "var(--muted)" : "#fff",
-					fontWeight: 500,
-				}}>${d.enabled ? "Disable" : "Enable"}</button>
+        <button onClick=${onToggle} class=${isDisc && d.enabled ? "provider-btn provider-btn-sm provider-btn-danger" : ""} style=${
+					isDisc && d.enabled
+						? {}
+						: {
+								background: d.enabled ? "none" : "var(--accent)",
+								border: "1px solid var(--border)",
+								borderRadius: "var(--radius-sm)",
+								fontSize: ".72rem",
+								padding: "3px 10px",
+								cursor: "pointer",
+								color: d.enabled ? "var(--muted)" : "#fff",
+								fontWeight: 500,
+							}
+				}>${isDisc && d.enabled ? "Delete" : d.enabled ? "Disable" : "Enable"}</button>
         <button onClick=${onClose} style="background:none;border:none;color:var(--muted);font-size:.9rem;cursor:pointer;padding:2px 4px">\u2715</button>
       </div>
     </div>
@@ -485,18 +497,27 @@ function EnabledSkillsTable() {
 	var detailLoading = useSignal(false);
 	if (!s || s.length === 0) return null;
 
+	function isDiscovered(skill) {
+		var src = skill.source || "";
+		return src === "personal" || src === "project";
+	}
+
 	function onDisable(skill) {
 		var source = map[skill.name] || skill.source;
 		if (!source) {
 			showToast("Cannot disable: unknown source for skill.", "error");
 			return;
 		}
+		if (isDiscovered(skill) && !confirm(`Delete skill "${skill.name}"? This removes the SKILL.md file.`)) {
+			return;
+		}
 		sendRpc("skills.skill.disable", { source: source, skill: skill.name }).then((res) => {
 			if (res?.ok) {
-				showToast(`Disabled ${skill.name}`, "success");
+				activeDetail.value = null;
+				showToast(isDiscovered(skill) ? `Deleted ${skill.name}` : `Disabled ${skill.name}`, "success");
 				fetchAll();
 			} else {
-				showToast(`Failed to disable: ${res?.error?.message || "unknown error"}`, "error");
+				showToast(`Failed: ${res?.error?.message || res?.error || "unknown error"}`, "error");
 			}
 		});
 	}
@@ -548,10 +569,12 @@ function EnabledSkillsTable() {
               <td style="padding:8px 12px;color:var(--text)">${skill.description || "\u2014"}</td>
               <td style="padding:8px 12px"><${SourceBadge} source=${skill.source} /></td>
               <td style="padding:8px 12px;text-align:right">
-                <button class="provider-btn provider-btn-sm provider-btn-secondary" onClick=${(e) => {
+                <button class=${isDiscovered(skill) ? "provider-btn provider-btn-sm provider-btn-danger" : "provider-btn provider-btn-sm provider-btn-secondary"} onClick=${(
+									e,
+								) => {
 									e.stopPropagation();
 									onDisable(skill);
-								}}>Disable</button>
+								}}>${isDiscovered(skill) ? "Delete" : "Disable"}</button>
               </td>
             </tr>`,
 					)}
